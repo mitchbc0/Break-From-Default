@@ -720,7 +720,7 @@ function expHTML(ticker,prefix,opts){
         style="width:100%;background:var(--bgc2);border:0.5px solid var(--border);border-radius:var(--rsm);
           color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;padding:8px 10px;
           resize:vertical;min-height:64px;outline:none;line-height:1.5"
-        placeholder="Price target, thesis, what you're watching for..."
+        placeholder="Price target, key level, etc..."
         onclick="event.stopPropagation()"
         oninput="event.stopPropagation();notes['${ticker}']=this.value;save()"
       >${(notes['${ticker}']||'').replace(/</g,'&lt;')}</textarea>
