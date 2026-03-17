@@ -192,16 +192,44 @@ select option{background:#0d1f35}
   .pie-wrap{grid-template-columns:1fr}
 }
 @media(max-width:640px){
-  .sidebar{width:56px;padding:1rem 8px}.logo span,.nb span{display:none}
-  .main{margin-left:56px;padding:1.5rem 1rem;max-width:calc(100vw - 56px)}
+  .sidebar{display:none}
+  .mobile-nav{display:flex}
+  .main{margin-left:0;padding:1rem;max-width:100vw;padding-bottom:72px}
   .dash-row1,.dash-row2{grid-template-columns:1fr}
-  .hh,.hr{grid-template-columns:2fr 1fr 50px}.hh>*:nth-child(3),.hh>*:nth-child(4),.hr>*:nth-child(3),.hr>*:nth-child(4){display:none}
+  .hh{display:none}
+  .hr{grid-template-columns:1fr 1fr;gap:6px}
+  .hr>*:nth-child(3),.hr>*:nth-child(4),.hr>*:nth-child(5){display:none}
   .cfi{grid-template-columns:1fr 1fr auto}.cfi>*:nth-child(3){display:none}
+  .exp-grid{grid-template-columns:1fr}
+  .igrid{grid-template-columns:repeat(3,1fr)}
+  .pie-wrap{grid-template-columns:1fr}
+  .ts-wrap{gap:3px}.tb{padding:3px 7px;font-size:10px}
 }
 </style>
 </head>
 <body>
+<style>
+.mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:rgba(6,13,26,0.97);border-top:0.5px solid rgba(255,255,255,0.1);
+  backdrop-filter:blur(20px);padding:8px 0 env(safe-area-inset-bottom,8px)}
+.mobile-nav-inner{display:flex;justify-content:space-around;align-items:center}
+.mnb{display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 8px;
+  border:none;background:transparent;cursor:pointer;color:#3a5470;transition:color .15s;min-width:44px}
+.mnb.active{color:#5b9dfa}
+.mnb-icon{font-size:18px;line-height:1}
+.mnb-label{font-size:9px;letter-spacing:.04em;text-transform:uppercase}
+</style>
 <div class="app">
+<nav class="mobile-nav">
+  <div class="mobile-nav-inner">
+    <button class="mnb" data-page="dashboard" onclick="showPage('dashboard',this)"><span class="mnb-icon">⌂</span><span class="mnb-label">Home</span></button>
+    <button class="mnb" data-page="holdings"  onclick="showPage('holdings',this)"><span class="mnb-icon">◈</span><span class="mnb-label">Holdings</span></button>
+    <button class="mnb" data-page="watchlist" onclick="showPage('watchlist',this)"><span class="mnb-icon">◉</span><span class="mnb-label">Watch</span></button>
+    <button class="mnb" data-page="paycheck"  onclick="showPage('paycheck',this)"><span class="mnb-icon">◎</span><span class="mnb-label">Pay</span></button>
+    <button class="mnb" data-page="recurring" onclick="showPage('recurring',this)"><span class="mnb-icon">↺</span><span class="mnb-label">Bills</span></button>
+    <button class="mnb" data-page="cashflow"  onclick="showPage('cashflow',this)"><span class="mnb-icon">⇄</span><span class="mnb-label">Flow</span></button>
+  </div>
+</nav>
 <nav class="sidebar">
   <div class="logo"><div class="logo-dot"></div><span>SavvyLiving</span></div>
   <button class="nb" data-page="dashboard" onclick="showPage('dashboard',this)"><span class="ni">⌂</span><span>Dashboard</span></button>
@@ -382,6 +410,7 @@ const FREQ_N={weekly:52,biweekly:26,monthly:12};
 
 let holdings =JSON.parse(lsg('sl_h') ||'[]');
 let watchlist=JSON.parse(lsg('sl_w') ||'[]');
+let notes    =JSON.parse(lsg('sl_notes')||'{}');
 let recurring=JSON.parse(lsg('sl_r') ||'[]');
 let cashflows=JSON.parse(lsg('sl_cf')||'[]');
 let allocPcts=JSON.parse(lsg('sl_ap')||'null')||[30,10,20,15,10,10];
@@ -396,8 +425,9 @@ let pieChart=null;
 
 function lsg(k){return localStorage.getItem(k);}
 function save(){
-  localStorage.setItem('sl_h',  JSON.stringify(holdings));
-  localStorage.setItem('sl_w',  JSON.stringify(watchlist));
+  localStorage.setItem('sl_h',     JSON.stringify(holdings));
+  localStorage.setItem('sl_w',     JSON.stringify(watchlist));
+  localStorage.setItem('sl_notes', JSON.stringify(notes));
   localStorage.setItem('sl_r',  JSON.stringify(recurring));
   localStorage.setItem('sl_cf', JSON.stringify(cashflows));
   localStorage.setItem('sl_ap', JSON.stringify(allocPcts));
@@ -416,10 +446,11 @@ function el(id){return document.getElementById(id);}
 // NAV
 function showPage(p,btn){
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.nb').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nb,.mnb').forEach(x=>x.classList.remove('active'));
   el(p).classList.add('active');
   const b=btn||document.querySelector(`.nb[data-page="${p}"]`);
   if(b)b.classList.add('active');
+  document.querySelectorAll(`.mnb[data-page="${p}"]`).forEach(b=>b.classList.add('active'));
   localStorage.setItem('sl_page',p);
   if(p==='cashflow'){popCFDrop();updateCFSrc();}
   if(p==='dashboard')updateDash();
@@ -593,6 +624,14 @@ async function getWikiDesc(ticker,coName){
         const nameParts=stripped.toLowerCase().split(' ');
         const relevant=nameParts.some(p=>p.length>3&&titleLower.includes(p))||titleLower.includes(ticker.toLowerCase());
         if(!relevant) continue;
+        // Extra check: if Finnhub told us the industry, make sure Wikipedia result isn't clearly wrong industry
+        const industry=(C[ticker]?.profile?.finnhubIndustry||'').toLowerCase();
+        if(industry&&industry.length>3){
+          const wrongIndustry=['video game','gaming','software','entertainment'].some(w=>
+            industry.includes('technology')?false:d.extract?.toLowerCase().includes(w)
+          );
+          if(wrongIndustry) continue;
+        }
         const sumR=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(res.title)}`);
         if(!sumR.ok) continue;
         const d=await sumR.json();
@@ -673,7 +712,18 @@ function expHTML(ticker,prefix,opts){
       <div class="exp-lbl">Key indicators</div>
       <div class="igrid">${inds.map(i=>`<div class="ibox"><div class="il">${i.l}</div><div class="iv">${i.v}</div></div>`).join('')}</div>
     </div>
-    <div id="pl-${prefix}-${ticker}" class="pl">${period}: <span style="color:var(--tm)">—</span></div>
+   <div id="pl-${prefix}-${ticker}" class="pl">${period}: <span style="color:var(--tm)">—</span></div>
+    <div class="exp-full" style="border-top:0.5px solid var(--border)">
+      <div class="exp-lbl">Notes</div>
+      <textarea id="notes-${prefix}-${ticker}"
+        style="width:100%;background:var(--bgc2);border:0.5px solid var(--border);border-radius:var(--rsm);
+          color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;padding:8px 10px;
+          resize:vertical;min-height:64px;outline:none;line-height:1.5"
+        placeholder="Price target, thesis, what you're watching for..."
+        onclick="event.stopPropagation()"
+        oninput="event.stopPropagation();notes['${ticker}']=this.value;save()"
+      >${(notes['${ticker}']||'').replace(/</g,'&lt;')}</textarea>
+    </div>
     <div class="exp-grid">
       <div class="exp-panel" style="border-top:0.5px solid var(--border)">
         <div class="exp-lbl">Recent news</div>
@@ -686,7 +736,7 @@ function expHTML(ticker,prefix,opts){
         </div>
       </div>
     </div>
-  </div>`;
+  </div>\``;
 }
 
 // INDICATORS
