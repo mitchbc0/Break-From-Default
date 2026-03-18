@@ -697,16 +697,29 @@ async function loadAIContent(ticker,avgCost,ev){
   w.innerHTML='<div class="loading">Generating...</div>';
   if(GEMINI==='YOUR_GEMINI_KEY'){w.innerHTML=`<div style="font-size:12px;color:var(--ts)">Add your Gemini key.</div>`;return;}
   try{
-    const {GoogleGenerativeAI}=await import('https://esm.sh/@google/generative-ai@0.21.0');
     const c=C[ticker]||{};
-    const [q,met,news]=await Promise.all([c.quote||getQ(ticker),c.metrics||getMet(ticker),c.news||getNews(ticker)]);
+    const [q,met,news]=await Promise.all([
+      c.quote||getQ(ticker),
+      c.metrics||getMet(ticker),
+      c.news||getNews(ticker)
+    ]);
     const m=met?.metric||{};
     const headlines=(news||[]).slice(0,5).map(n=>'- '+n.headline).join('\n')||'No recent news.';
-    const avgLine=avgCost?`\nInvestor avg: $${avgCost} — ${q.c>avgCost?'above':'below'} avg`:'';
-    const prompt=`Concise financial analyst. For ${ticker}, 4-5 sentences: price drivers today, valuation, momentum.${avgCost?' Compare to investor avg.':''} Direct, no disclaimers.\nPrice:$${q.c} Day:${(q.dp||0).toFixed(2)}%${avgLine}\nPE:${m.peNormalizedAnnual??'N/A'} FwdPE:${m.forwardPE??'N/A'} EPS:${m.epsTTM??'N/A'}\n52W:$${m['52WeekHigh']??'N/A'}/$${m['52WeekLow']??'N/A'}\nHeadlines:\n${headlines}`;
-    const genAI=new GoogleGenerativeAI(GEMINI);
-    const result=await genAI.getGenerativeModel({model:'gemini-2.0-flash'}).generateContent(prompt);
-    w.innerHTML=`<div style="font-size:12px;color:var(--text);line-height:1.7">${result.response.text().replace(/\n/g,'<br>')}</div>
+    const avgLine=avgCost?`\nInvestor avg: $${avgCost} — stock is ${q.c>avgCost?'above':'below'} avg cost`:'';
+    const prompt=`You are a concise financial analyst. For ${ticker}, write 4-5 sentences covering: what is driving the price today, what key indicators say about valuation, and short-term momentum direction.${avgCost?' Note how current price compares to the investor avg cost.':''} Be direct, no disclaimers.\n\nPrice: $${q.c} | Day: ${(q.dp||0).toFixed(2)}%${avgLine}\nPE: ${m.peNormalizedAnnual??'N/A'} | Fwd PE: ${m.forwardPE??'N/A'} | EPS: ${m.epsTTM??'N/A'}\n52W High: $${m['52WeekHigh']??'N/A'} | 52W Low: $${m['52WeekLow']??'N/A'}\n\nRecent headlines:\n${headlines}`;
+    const res=await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI}`,
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}
+    );
+    if(!res.ok){
+      const errData=await res.json().catch(()=>({}));
+      throw new Error(errData?.error?.message||`HTTP ${res.status}`);
+    }
+    const data=await res.json();
+    const text=data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(!text) throw new Error('No response from Gemini');
+    w.innerHTML=`<div style="font-size:12px;color:var(--text);line-height:1.7">${text.replace(/\n/g,'<br>')}</div>
     <button class="btn bsm" style="margin-top:8px;font-size:11px" onclick="event.stopPropagation();el('ai-box-${ticker}').innerHTML='<button class=\\'btn bsm bai\\' onclick=\\'loadAIContent(\\'${ticker}\\',${avgCost||'null'},event)\\'>Generate analysis</button>'">Clear</button>`;
   }catch(e){w.innerHTML=`<div style="font-size:12px;color:var(--dn)">Error: ${e.message}</div>`;}
 }
