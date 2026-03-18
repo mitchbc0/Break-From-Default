@@ -412,6 +412,7 @@ select option{background:#0d1f35}
 <script>
 const FINNHUB='d6rerkhr01qr194me1rgd6rerkhr01qr194me1s0';
 const GEMINI='AIzaSyBiC8YZk0IwC2dUxOgRXIxz4ByQNIM9yKg';
+const FMP='pjqmj0u3hOLz1vCHAwysl37Se6jUE1W8';
 const PERIODS=['1D','1W','1M','3M','6M','YTD','1Y','5Y','10Y','All'];
 const PIE_COLORS=['#2d7ef7','#22c988','#a78bfa','#f05d5d','#fbbf24','#f472b6','#38bdf8','#fb923c','#4ade80','#e879f9'];
 const ALLOC_CATS=[
@@ -499,52 +500,21 @@ const getNews=t=>{
 
 // STOOQ historical price for period % change
 // Returns price at start of period so we can calculate ((current - start) / start) * 100
-async function getStooqStartPrice(ticker, period){
-  if(period==='1D') return null;
-
-  const now=new Date();
-  let startDate=new Date();
-  if(period==='1W')       startDate.setDate(now.getDate()-7);
-  else if(period==='1M')  startDate.setMonth(now.getMonth()-1);
-  else if(period==='3M')  startDate.setMonth(now.getMonth()-3);
-  else if(period==='6M')  startDate.setMonth(now.getMonth()-6);
-  else if(period==='YTD') startDate=new Date(now.getFullYear(),0,2);
-  else if(period==='1Y')  startDate.setFullYear(now.getFullYear()-1);
-  else if(period==='5Y')  startDate.setFullYear(now.getFullYear()-5);
-  else if(period==='10Y') startDate.setFullYear(now.getFullYear()-10);
-  else if(period==='All') startDate=new Date('2000-01-01');
-
-  const pad=(n)=>String(n).padStart(2,'0');
-  const fmtD=(d)=>`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
-  const d1=fmtD(startDate), d2=fmtD(now);
-  const sym=ticker.toLowerCase()+'.us';
-  const stooqUrl=`https://stooq.com/q/d/l/?s=${sym}&d1=${d1}&d2=${d2}&i=d`;
-
-  // Try direct first (works in some browsers), fall back to corsproxy.io
-  const urls=[stooqUrl, `https://corsproxy.io/?url=${encodeURIComponent(stooqUrl)}`];
-  for(const url of urls){
-    try{
-      const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}});
-      if(!r.ok) continue;
-      const text=await r.text();
-      // Stooq returns HTML "Exceeded the daily limit" when rate limited
-      if(text.includes('Exceeded')||text.includes('<html')||text.length<20) continue;
-      const lines=text.trim().split('\n').filter(l=>l&&!l.startsWith('Date'));
-      if(!lines.length) continue;
-      const startPrice=parseFloat(lines[0].split(',')[4]);
-      if(!isNaN(startPrice)&&startPrice>0) return startPrice;
-    }catch(e){continue;}
-  }
-  return null;
-}
-
 async function getPeriodChange(ticker, period, currentPrice){
-  if(period==='1D'){
-    return C[ticker]?.quote?.dp||null;
-  }
-  const startPrice=await getStooqStartPrice(ticker, period);
-  if(!startPrice||!currentPrice) return null;
-  return((currentPrice-startPrice)/startPrice)*100;
+  if(period==='1D') return C[ticker]?.quote?.dp||null;
+  const fmpMap={'1W':'5D','1M':'1M','3M':'3M','6M':'6M','YTD':'ytd','1Y':'1Y','5Y':'5Y','10Y':'10Y','All':'10Y'};
+  const fmpField=fmpMap[period];
+  if(!fmpField) return null;
+  try{
+    if(!C[ticker].fmpChange){
+      const r=await fetch(`https://financialmodelingprep.com/stable/stock-price-change?symbol=${ticker}&apikey=${FMP}`);
+      if(!r.ok) return null;
+      const d=await r.json();
+      C[ticker].fmpChange=Array.isArray(d)?d[0]:d;
+    }
+    const val=C[ticker].fmpChange?.[fmpField];
+    return val!=null?val:null;
+  }catch(e){ return null; }
 }
 
 // TIME SELECTORS
@@ -690,40 +660,6 @@ function newsHTML(news){
   }).join('');
 }
 
-// AI
-async function loadAIContent(ticker,avgCost,ev){
-  if(ev)ev.stopPropagation();
-  const w=el('ai-box-'+ticker); if(!w) return;
-  w.innerHTML='<div class="loading">Generating...</div>';
-  if(GEMINI==='YOUR_GEMINI_KEY'){w.innerHTML=`<div style="font-size:12px;color:var(--ts)">Add your Gemini key.</div>`;return;}
-  try{
-    const c=C[ticker]||{};
-    const [q,met,news]=await Promise.all([
-      c.quote||getQ(ticker),
-      c.metrics||getMet(ticker),
-      c.news||getNews(ticker)
-    ]);
-    const m=met?.metric||{};
-    const headlines=(news||[]).slice(0,5).map(n=>'- '+n.headline).join('\n')||'No recent news.';
-    const avgLine=avgCost?`\nInvestor avg: $${avgCost} — stock is ${q.c>avgCost?'above':'below'} avg cost`:'';
-    const prompt=`You are a concise financial analyst. For ${ticker}, write 4-5 sentences covering: what is driving the price today, what key indicators say about valuation, and short-term momentum direction.${avgCost?' Note how current price compares to the investor avg cost.':''} Be direct, no disclaimers.\n\nPrice: $${q.c} | Day: ${(q.dp||0).toFixed(2)}%${avgLine}\nPE: ${m.peNormalizedAnnual??'N/A'} | Fwd PE: ${m.forwardPE??'N/A'} | EPS: ${m.epsTTM??'N/A'}\n52W High: $${m['52WeekHigh']??'N/A'} | 52W Low: $${m['52WeekLow']??'N/A'}\n\nRecent headlines:\n${headlines}`;
-    const res=await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI}`,
-      {method:'POST',headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}
-    );
-    if(!res.ok){
-      const errData=await res.json().catch(()=>({}));
-      throw new Error(errData?.error?.message||`HTTP ${res.status}`);
-    }
-    const data=await res.json();
-    const text=data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if(!text) throw new Error('No response from Gemini');
-    w.innerHTML=`<div style="font-size:12px;color:var(--text);line-height:1.7">${text.replace(/\n/g,'<br>')}</div>
-    <button class="btn bsm" style="margin-top:8px;font-size:11px" onclick="event.stopPropagation();el('ai-box-${ticker}').innerHTML='<button class=\\'btn bsm bai\\' onclick=\\'loadAIContent(\\'${ticker}\\',${avgCost||'null'},event)\\'>Generate analysis</button>'">Clear</button>`;
-  }catch(e){w.innerHTML=`<div style="font-size:12px;color:var(--dn)">Error: ${e.message}</div>`;}
-}
-
 // EXPANDED HTML
 function expHTML(ticker,prefix,opts){
   const{avgCost,inds,rec,news}=opts;
@@ -762,9 +698,6 @@ function expHTML(ticker,prefix,opts){
       </div>
       <div class="exp-panel" style="border-top:0.5px solid var(--border)">
         <div class="exp-lbl">AI analysis</div>
-        <div id="ai-box-${ticker}">
-          <button class="btn bsm bai" onclick="loadAIContent('${ticker}',${avgCost||'null'},event)">Generate analysis</button>
-        </div>
       </div>
     </div>
   </div>\``;
