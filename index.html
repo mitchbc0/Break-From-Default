@@ -90,7 +90,7 @@ select option{background:#0d1f35}
 .tc.expanded{border-color:var(--ab)}
 .tc-top{padding:1.25rem 1.5rem 1rem;pointer-events:none}
 .tc-top button,.tc-top a{pointer-events:auto}
-.expand-hint{font-size:10px;color:var(--tm);text-align:right;padding:0 1.5rem 8px;transition:color .15s}
+.expand-hint{font-size:10px;color:var(--tm);text-align:right;padding:0 1.5rem 8px;transition:color .15s;overflow:hidden;white-space:nowrap}
 .tc:hover .expand-hint,.tc.expanded .expand-hint{color:var(--al)}
 /* HOLDINGS GRID */
 .hh{display:grid;grid-template-columns:2.2fr 1.3fr 1.1fr 1.1fr 50px;gap:8px;padding:0 1.5rem 8px;border-bottom:0.5px solid var(--border);margin-bottom:4px}
@@ -107,9 +107,9 @@ select option{background:#0d1f35}
 .coll.open{display:block}
 /* EXPANDED LAYOUT */
 .exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;overflow:hidden}
-.exp-panel{padding:14px 1.5rem;border-right:0.5px solid var(--border)}
+.exp-panel{padding:12px 1.5rem;border-right:0.5px solid var(--border)}
 .exp-panel:last-child{border-right:none}
-.exp-full{padding:14px 1.5rem;border-bottom:0.5px solid var(--border)}
+.exp-full{padding:10px 1.5rem;border-bottom:0.5px solid var(--border)}
 .exp-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tm);font-weight:500;margin-bottom:8px}
 /* INDICATORS 3x2 */
 .igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -495,9 +495,7 @@ function buildTS(id,cur,cb){
 async function updatePeriodBadge(prefix,ticker,period){
   const c=C[ticker];if(!c)return;
   let chg=await getPeriodChange(ticker,period);
-  // Always fall back to today's change if period data unavailable
   if(chg==null) chg=c.quote?.dp||null;
-  // Update the inline badge next to price
   const badge=el(`pb-${prefix}-${ticker}`);
   if(badge){
     const col=(chg||0)>=0?'var(--up)':'var(--dn)';
@@ -527,7 +525,8 @@ async function toggleCard(prefix,ticker,ev){
   if(!card||!coll)return;
   const opening=!coll.classList.contains('open');
   coll.classList.toggle('open');card.classList.toggle('expanded');
-  if(hint)hint.textContent=opening?'▴ click to collapse':'▾ click to expand';
+  const hints=card.querySelectorAll('.expand-hint');
+  hints.forEach(h=>h.textContent=opening?'▴ click to collapse':'▾ click to expand');
   if(opening){
     const c=C[ticker];
     const de=el(`desc-${ticker}`);
@@ -741,7 +740,7 @@ function buildHCardHTML(h,q,pro,met,news,rec){
       <div><div class="cl2">Market Value</div><div class="cv">${fmtM(value)}</div><div class="csub">basis ${fmtM(basis)}</div></div>
       <div><button class="rb" onclick="event.stopPropagation();removeHolding('${h.ticker}')">×</button></div>
     </div></div>
-    <div id="hint-h-${h.ticker}" class="expand-hint">▾ click to expand</div>
+    <div class="expand-hint" style="text-align:right;padding:4px 1.5rem 6px;font-size:10px;color:var(--tm)">▾ click to expand</div>
     ${expHTML(h.ticker,'h',{avgCost:h.cost,inds:buildInds(m),rec,news})}
   </div>`;
 }
@@ -769,7 +768,7 @@ function buildWCardHTML(ticker,q,pro,met,news,rec){
         <button class="rb" onclick="event.stopPropagation();removeWatch('${ticker}')">×</button>
       </div>
     </div>
-    <div id="hint-w-${ticker}" class="expand-hint">▾ click to expand</div>
+    <div class="expand-hint" style="text-align:right;padding:4px 1.5rem 6px;font-size:10px;color:var(--tm)">▾ click to expand</div>
     ${expHTML(ticker,'w',{avgCost:null,inds:buildInds(m),rec,news})}
   </div>`;
 }
